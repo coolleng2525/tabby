@@ -1,0 +1,71 @@
+h3 HubTerm Agent
+
+.form-line
+    .header
+        .title Enable HubTerm
+        .description Connect this terminal to HubTerm center
+
+    toggle(
+        [(ngModel)]='config.store.hubterm.enabled',
+        (ngModelChange)='config.save()',
+    )
+
+.form-line(*ngIf='config.store.hubterm.enabled')
+    .header
+        .title Center URL
+        .description WebSocket address of HubTerm center
+
+    input.form-control(
+        type='text',
+        [(ngModel)]='config.store.hubterm.centerUrl',
+        (ngModelChange)='config.save()',
+        placeholder='ws://localhost:8080/ws'
+    )
+
+.form-line(*ngIf='config.store.hubterm.enabled')
+    .header
+        .title Node Name
+        .description Name for this node (leave empty for hostname)
+
+    input.form-control(
+        type='text',
+        [(ngModel)]='config.store.hubterm.nodeName',
+        (ngModelChange)='config.save()',
+        placeholder='my-workstation'
+    )
+
+.form-line(*ngIf='config.store.hubterm.enabled')
+    .header
+        .title Domain
+        .description Auto-discovery domain
+
+    input.form-control(
+        type='text',
+        [(ngModel)]='config.store.hubterm.domain',
+        (ngModelChange)='config.save()',
+        placeholder='mycompany.com'
+    )
+
+.form-line(*ngIf='config.store.hubterm.enabled')
+    .header
+        .title Token
+        .description Node authentication token
+
+    input.form-control(
+        type='password',
+        [(ngModel)]='config.store.hubterm.token',
+        (ngModelChange)='config.save()',
+    )
+
+.form-line(*ngIf='config.store.hubterm.enabled')
+    .header
+        .title Report Interval (seconds)
+        .description How often to report node status
+
+    input.form-control(
+        type='number',
+        [(ngModel)]='config.store.hubterm.reportInterval',
+        (ngModelChange)='config.save()',
+        min='1',
+        max='60'
+    )
