@@ -1,0 +1,44 @@
+{
+  "name": "tabby-hubterm",
+  "version": "1.0.0",
+  "description": "HubTerm Agent — auto-discovery, remote management, terminal sharing",
+  "keywords": [
+    "tabby-builtin-plugin"
+  ],
+  "main": "dist/index.js",
+  "typings": "typings/index.d.ts",
+  "scripts": {
+    "build": "webpack --progress --color",
+    "watch": "webpack --progress --color --watch"
+  },
+  "files": [
+    "dist",
+    "typings"
+  ],
+  "author": "coolleng2525",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@angular/animations": "^21.2.16",
+    "@angular/common": "^21.2.17",
+    "@angular/core": "^21.2.17",
+    "@angular/forms": "^21.2.17",
+    "@angular/platform-browser": "^21.2.17",
+    "@angular/platform-browser-dynamic": "^21.2.17",
+    "@ng-bootstrap/ng-bootstrap": "^20.0.0",
+    "@types/node": "14.14.14",
+    "rxjs": "^7.8.2"
+  },
+  "peerDependencies": {
+    "@angular/animations": "^15",
+    "@angular/common": "^15",
+    "@angular/core": "^15",
+    "@angular/forms": "^15",
+    "@angular/platform-browser": "^15",
+    "@angular/platform-browser-dynamic": "^15",
+    "@ng-bootstrap/ng-bootstrap": "^14",
+    "rxjs": "^7",
+    "tabby-core": "*",
+    "tabby-settings": "*",
+    "tabby-terminal": "*"
+  }
+}
