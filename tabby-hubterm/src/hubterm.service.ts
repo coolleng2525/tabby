@@ -81,7 +81,7 @@ export class HubTermService {
             console.log('[HubTerm] not starting: disabled or no centerUrl')
             return
         }
-        if (this.ws || this.startPromise) { return }
+        if (this.ws ?? this.startPromise) { return }
 
         this.stopping = false
         this.startPromise = this.registerAndConnect(cfg.centerUrl).finally(() => {
