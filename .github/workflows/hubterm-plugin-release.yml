@@ -26,6 +26,9 @@ jobs:
 
       - name: Build plugin
         run: |
+          VERSION=$(node -p "require('./tabby-hubterm/package.json').version")
+          git tag -d "$GITHUB_REF_NAME"
+          git tag "v${VERSION}"
           yarn build:typings
           yarn --cwd tabby-hubterm build
 
