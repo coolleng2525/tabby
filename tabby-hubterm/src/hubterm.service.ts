@@ -1,30 +1,29 @@
 import { Injectable, Injector, NgZone } from '@angular/core'
-import { ConfigService, HostAppService, Platform } from 'tabby-core'
-import { TerminalDecorator } from 'tabby-terminal'
+import { ConfigService, HostAppService } from 'tabby-core'
 import { BaseTerminalTabComponent } from 'tabby-terminal'
 
 interface NodeReport {
     node_id: string
-    node_name: string
+    name: string
     hostname: string
-    platform: string
+    os: string
     os_version: string
     arch: string
     sessions: SessionInfo[]
-    capabilities: string[]
 }
 
 interface SessionInfo {
-    id: string
-    type: string
-    name: string
-    host?: string
-    port?: number
+    session_id: string
+    port_name: string
+    user: string
+    type: 'master' | 'watcher'
+    client_ip: string
+    connected_at: number
 }
 
 interface CenterCommand {
     type: string
-    payload?: any
+    data?: { payload?: any, [key: string]: any }
 }
 
 /** @hidden */
@@ -35,7 +34,7 @@ export class HubTermService {
     private reconnectTimer: any = null
     private reconnectDelay = 1000
     private nodeId: string = ''
-    private attachedTabs: Map<BaseTerminalTabComponent, boolean> = new Map()
+    private attachedTabs: Map<BaseTerminalTabComponent<any>, SessionInfo> = new Map()
     private stopping = false
 
     private get config () { return this.injector.get(ConfigService) }
@@ -104,42 +103,39 @@ export class HubTermService {
         console.log('[HubTerm] stopped')
     }
 
-    attachTab (tab: BaseTerminalTabComponent) {
-        this.attachedTabs.set(tab, true)
+    attachTab (tab: BaseTerminalTabComponent<any>) {
+        const existingId = (tab as any).sessionId
+        const sessionId = existingId && existingId !== 'unknown' ? existingId : this.generateId()
+        this.attachedTabs.set(tab, {
+            session_id: sessionId,
+            port_name: (tab as any).sessionName || (tab as any).profile?.name || 'terminal',
+            user: '',
+            type: 'master',
+            client_ip: '',
+            connected_at: Math.floor(Date.now() / 1000),
+        })
         console.log('[HubTerm] tab attached, total tabs:', this.attachedTabs.size)
     }
 
-    detachTab (tab: BaseTerminalTabComponent) {
+    detachTab (tab: BaseTerminalTabComponent<any>) {
         this.attachedTabs.delete(tab)
+        this.sendReport()
         console.log('[HubTerm] tab detached, total tabs:', this.attachedTabs.size)
     }
 
-    sendTerminalData (tab: BaseTerminalTabComponent, data: string) {
+    sendTerminalData (tab: BaseTerminalTabComponent<any>, value: unknown, direction: 'input' | 'output') {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
-
-        let sessionInfo: SessionInfo | null = null
-        for (const [t, _] of this.attachedTabs) {
-            if (t === tab) {
-                sessionInfo = {
-                    id: (tab as any).sessionId || 'unknown',
-                    type: (tab as any).sessionType || 'local',
-                    name: (tab as any).sessionName || 'terminal',
-                }
-                break
-            }
-        }
-
+        const sessionId = this.attachedTabs.get(tab)?.session_id
+        if (!sessionId) return
         this.ws.send(JSON.stringify({
             type: 'terminal_data',
-            node_id: this.nodeId,
-            session: sessionInfo,
-            data: btoa(data),
+            data: { session_id: sessionId, direction, data: this.bytesToBase64(value) },
         }))
     }
 
-    writeToTab (tab: BaseTerminalTabComponent, data: string) {
+    writeToTab (tab: BaseTerminalTabComponent<any>, data: string) {
         if (tab && (tab as any).write) {
-            (tab as any).write(atob(data))
+            (tab as any).write(new TextDecoder().decode(this.base64ToBytes(data)))
         }
     }
 
@@ -151,12 +147,13 @@ export class HubTermService {
 
         console.log('[HubTerm] connecting to:', url)
         try {
-            this.ws = new WebSocket(url)
+            const cfg = this.config.store.hubterm
+            const protocols = cfg.token ? ['hubterm', `hubterm.node.${cfg.token}`] : ['hubterm']
+            this.ws = new WebSocket(this.agentUrl(url), protocols)
 
             this.ws.onopen = () => {
                 console.log('[HubTerm] connected to center')
                 this.reconnectDelay = 1000
-                this.register()
                 this.startReporting()
             }
 
@@ -183,6 +180,28 @@ export class HubTermService {
         }
     }
 
+    private agentUrl (configuredUrl: string): string {
+        const url = new URL(configuredUrl)
+        if (['/', '/ws', '/api/ws'].includes(url.pathname)) url.pathname = '/api/ws/agent'
+        url.searchParams.set('node_id', this.nodeId)
+        return url.toString()
+    }
+
+    private bytesToBase64 (value: unknown): string {
+        let bytes: Uint8Array
+        if (typeof value === 'string') bytes = new TextEncoder().encode(value)
+        else if (value instanceof Uint8Array) bytes = value
+        else if (value instanceof ArrayBuffer) bytes = new Uint8Array(value)
+        else bytes = new TextEncoder().encode(String(value))
+        let binary = ''
+        for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+        return btoa(binary)
+    }
+
+    private base64ToBytes (value: string): Uint8Array {
+        return Uint8Array.from(atob(value), char => char.charCodeAt(0))
+    }
+
     private scheduleReconnect (url: string) {
         if (this.reconnectTimer) return
         console.log('[HubTerm] scheduling reconnect in', this.reconnectDelay, 'ms')
@@ -191,20 +210,6 @@ export class HubTermService {
             this.connect(url)
         }, this.reconnectDelay)
         this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000)
-    }
-
-    private register () {
-        if (!this.ws) return
-        const cfg = this.config.store.hubterm
-        const msg = {
-            type: 'register',
-            node_id: this.nodeId,
-            node_name: cfg.nodeName || this.hostApp.platform,
-            token: cfg.token || '',
-            domain: cfg.domain || '',
-        }
-        console.log('[HubTerm] sending register:', JSON.stringify(msg))
-        this.ws.send(JSON.stringify(msg))
     }
 
     private startReporting () {
@@ -220,75 +225,69 @@ export class HubTermService {
 
         const report: NodeReport = {
             node_id: this.nodeId,
-            node_name: this.config.store.hubterm.nodeName || '',
-            hostname: window.location.hostname || '',
-            platform: this.hostApp.platform,
+            name: this.config.store.hubterm.nodeName || 'Tabby',
+            hostname: window.location.hostname || this.config.store.hubterm.nodeName || 'tabby',
+            os: this.hostApp.platform || '',
             os_version: navigator.userAgent || '',
             arch: '',
             sessions: this.collectSessions(),
-            capabilities: ['tabby-terminal', 'serial', 'ssh'],
         }
 
         this.ws.send(JSON.stringify({
             type: 'report',
-            ...report,
+            data: report,
         }))
     }
 
     private collectSessions (): SessionInfo[] {
-        const sessions: SessionInfo[] = []
-        for (const [tab, _] of this.attachedTabs) {
-            sessions.push({
-                id: (tab as any).sessionId || 'unknown',
-                type: (tab as any).sessionType || 'local',
-                name: (tab as any).sessionName || 'terminal',
-            })
+        return Array.from(this.attachedTabs.values())
+    }
+
+    private tabForSession (sessionId: string): BaseTerminalTabComponent<any> | null {
+        for (const [tab, session] of this.attachedTabs) {
+            if (session.session_id === sessionId) return tab
         }
-        return sessions
+        return null
     }
 
     private handleCommand (raw: string) {
         try {
             const cmd: CenterCommand = JSON.parse(raw)
-            console.log('[HubTerm] received command:', cmd.type, cmd.payload ? JSON.stringify(cmd.payload) : '')
+            const payload = cmd.data?.payload || cmd.data || {}
+            console.log('[HubTerm] received command:', cmd.type, JSON.stringify(payload))
 
             switch (cmd.type) {
                 case 'ping':
-                    this.ws?.send(JSON.stringify({ type: 'pong' }))
+                    this.ws?.send(JSON.stringify({ type: 'pong', data: {} }))
                     break
 
                 case 'write':
-                    if (cmd.payload?.session_id && cmd.payload?.data) {
-                        for (const [tab, _] of this.attachedTabs) {
-                            if ((tab as any).sessionId === cmd.payload.session_id) {
-                                console.log('[HubTerm] writing data to session:', cmd.payload.session_id)
-                                this.writeToTab(tab, cmd.payload.data)
-                                break
-                            }
-                        }
+                    if (payload.session_id && payload.data) {
+                        const tab = this.tabForSession(payload.session_id)
+                        if (tab) this.writeToTab(tab, payload.data)
                     }
                     break
 
                 case 'disconnect':
-                    if (cmd.payload?.session_id) {
-                        console.log('[HubTerm] disconnecting session:', cmd.payload.session_id)
-                        for (const [tab, _] of this.attachedTabs) {
-                            if ((tab as any).sessionId === cmd.payload.session_id) {
-                                (tab as any).close()
-                                break
-                            }
-                        }
+                case 'kick_session':
+                    if (payload.session_id) {
+                        const tab = this.tabForSession(payload.session_id)
+                        if (tab) (tab as any).close()
                     }
                     break
 
+                case 'assign_master':
+                    console.log('[HubTerm] session promoted:', payload.session_id)
+                    break
+
                 case 'set_permission':
-                    console.log('[HubTerm] permission update:', cmd.payload)
+                    console.log('[HubTerm] permission update:', payload)
                     break
 
                 case 'update_config':
-                    if (cmd.payload) {
-                        console.log('[HubTerm] updating config:', cmd.payload)
-                        Object.assign(this.config.store.hubterm, cmd.payload)
+                    if (payload) {
+                        console.log('[HubTerm] updating config:', payload)
+                        Object.assign(this.config.store.hubterm, payload)
                         this.config.save()
                     }
                     break

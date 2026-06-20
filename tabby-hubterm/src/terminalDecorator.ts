@@ -1,12 +1,14 @@
 import { Injectable, Injector } from '@angular/core'
 import { TerminalDecorator } from 'tabby-terminal'
 import { BaseTerminalTabComponent } from 'tabby-terminal'
+import { Subscription } from 'rxjs'
 import { HubTermService } from './hubterm.service'
 
 /** @hidden */
 @Injectable()
 export class HubTermDecorator extends TerminalDecorator {
     private hubterm: HubTermService
+    private subscriptions = new Map<BaseTerminalTabComponent<any>, Subscription[]>()
 
     constructor (
         private injector: Injector,
@@ -16,30 +18,31 @@ export class HubTermDecorator extends TerminalDecorator {
         console.log('[HubTerm] decorator created')
     }
 
-    attach (tab: BaseTerminalTabComponent): void {
+    attach (tab: BaseTerminalTabComponent<any>): void {
         console.log('[HubTerm] decorator attaching to tab')
         this.hubterm.attachTab(tab)
 
+        const subscriptions: Subscription[] = []
         if (tab.output$) {
-            tab.output$.subscribe((data: any) => {
-                const str = typeof data === 'string' ? data : String(data)
-                this.hubterm.sendTerminalData(tab, str)
-            })
+            subscriptions.push(tab.output$.subscribe((data: any) => {
+                this.hubterm.sendTerminalData(tab, data, 'output')
+            }))
         }
-
         if (tab.input$) {
-            tab.input$.subscribe((data: any) => {
-                const str = typeof data === 'string' ? data : String(data)
-                this.hubterm.sendTerminalData(tab, str)
-            })
+            subscriptions.push(tab.input$.subscribe((data: any) => {
+                this.hubterm.sendTerminalData(tab, data, 'input')
+            }))
         }
+        this.subscriptions.set(tab, subscriptions)
 
         // Start HubTerm service when first tab attaches
         this.hubterm.start()
     }
 
-    detach (tab: BaseTerminalTabComponent): void {
+    detach (tab: BaseTerminalTabComponent<any>): void {
         console.log('[HubTerm] decorator detaching from tab')
+        this.subscriptions.get(tab)?.forEach(subscription => subscription.unsubscribe())
+        this.subscriptions.delete(tab)
         this.hubterm.detachTab(tab)
     }
 }

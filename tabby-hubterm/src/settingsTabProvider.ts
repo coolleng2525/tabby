@@ -1,4 +1,4 @@
-import { Injectable, Injector } from '@angular/core'
+import { Injectable } from '@angular/core'
 import { SettingsTabProvider } from 'tabby-settings'
 import { HubTermSettingsTabComponent } from './settingsTab.component'
 

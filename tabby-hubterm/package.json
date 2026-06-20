@@ -17,17 +17,6 @@
   ],
   "author": "coolleng2525",
   "license": "Apache-2.0",
-  "devDependencies": {
-    "@angular/animations": "^21.2.16",
-    "@angular/common": "^21.2.17",
-    "@angular/core": "^21.2.17",
-    "@angular/forms": "^21.2.17",
-    "@angular/platform-browser": "^21.2.17",
-    "@angular/platform-browser-dynamic": "^21.2.17",
-    "@ng-bootstrap/ng-bootstrap": "^20.0.0",
-    "@types/node": "14.14.14",
-    "rxjs": "^7.8.2"
-  },
   "peerDependencies": {
     "@angular/animations": "^15",
     "@angular/common": "^15",
