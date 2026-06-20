@@ -335,7 +335,7 @@ jobs:
         echo "PATH=$newPath" >> $env:GITHUB_ENV
 
     - name: Decode certificate
-      if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags'))
+      if: ${{ false }} # Fork releases are intentionally unsigned.
       env:
         SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
       run: |
@@ -345,7 +345,7 @@ jobs:
       shell: bash
 
     - name: Setup Software Trust Manager
-      if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags'))
+      if: ${{ false }} # Fork releases are intentionally unsigned.
       uses: digicert/code-signing-software-trust-action@cb502242630f8556eb815a4f9c1e8c64d2a2d2a3 # v1.0.0
       env:
         SM_HOST: ${{ vars.SM_HOST }}
@@ -354,7 +354,7 @@ jobs:
         SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
 
     - name: smctl diagnostics
-      if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags'))
+      if: ${{ false }} # Fork releases do not have DigiCert credentials.
       shell: powershell
       env:
         SM_LOG_LEVEL: TRACE
