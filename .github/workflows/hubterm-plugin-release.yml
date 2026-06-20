@@ -1,0 +1,52 @@
+name: HubTerm-Plugin-Release
+
+on:
+  push:
+    tags:
+      - 'tabby-hubterm-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn --network-timeout 1000000
+
+      - name: Build plugin
+        run: |
+          yarn tsc --project tabby-hubterm/tsconfig.typings.json
+          yarn --cwd tabby-hubterm build
+
+      - name: Package plugin
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./tabby-hubterm/package.json').version")
+          mkdir -p release-assets/windows/tabby-hubterm
+          (cd tabby-hubterm && npm pack --pack-destination ../release-assets)
+          cp -R tabby-hubterm/dist tabby-hubterm/typings release-assets/windows/tabby-hubterm/
+          cp tabby-hubterm/package.json release-assets/windows/tabby-hubterm/
+          cp tabby-hubterm/windows/install.cmd tabby-hubterm/windows/README-安装说明.txt release-assets/windows/
+          (cd release-assets/windows && zip -r "../tabby-hubterm-${VERSION}-windows.zip" .)
+          rm -rf release-assets/windows
+          (cd release-assets && sha256sum *.tgz *.zip > SHA256SUMS.txt)
+
+      - name: Publish GitHub Release
+        shell: bash
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+          find release-assets -maxdepth 1 -type f -exec gh release upload "$GITHUB_REF_NAME" '{}' --clobber \;
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
