@@ -1,6 +1,5 @@
 import { Injectable, Injector } from '@angular/core'
-import { TerminalDecorator } from 'tabby-terminal'
-import { BaseTerminalTabComponent } from 'tabby-terminal'
+import { TerminalDecorator, BaseTerminalTabComponent } from 'tabby-terminal'
 import { Subscription } from 'rxjs'
 import { HubTermService } from './hubterm.service'
 
@@ -23,19 +22,14 @@ export class HubTermDecorator extends TerminalDecorator {
         this.hubterm.attachTab(tab)
 
         const subscriptions: Subscription[] = []
-        if (tab.output$) {
-            subscriptions.push(tab.output$.subscribe((data: any) => {
-                this.hubterm.sendTerminalData(tab, data, 'output')
-            }))
-        }
-        if (tab.input$) {
-            subscriptions.push(tab.input$.subscribe((data: any) => {
-                this.hubterm.sendTerminalData(tab, data, 'input')
-            }))
-        }
+        subscriptions.push(tab.output$.subscribe((data: any) => {
+            this.hubterm.sendTerminalData(tab, data, 'output')
+        }))
+        subscriptions.push(tab.input$.subscribe((data: any) => {
+            this.hubterm.sendTerminalData(tab, data, 'input')
+        }))
         this.subscriptions.set(tab, subscriptions)
 
-        // Start HubTerm service when first tab attaches
         this.hubterm.start()
     }
 

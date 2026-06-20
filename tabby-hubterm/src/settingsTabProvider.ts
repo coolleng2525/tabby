@@ -10,6 +10,6 @@ export class HubTermSettingsTabProvider extends SettingsTabProvider {
         this.weight = 200
     }
 
-    getTitle () { return 'HubTerm' }
+    getTitle (): string { return 'HubTerm' }
     getComponent (): typeof HubTermSettingsTabComponent { return HubTermSettingsTabComponent }
 }

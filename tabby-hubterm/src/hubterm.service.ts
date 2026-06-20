@@ -33,7 +33,7 @@ export class HubTermService {
     private reportTimer: any = null
     private reconnectTimer: any = null
     private reconnectDelay = 1000
-    private nodeId: string = ''
+    private nodeId = ''
     private attachedTabs: Map<BaseTerminalTabComponent<any>, SessionInfo> = new Map()
     private stopping = false
 
@@ -48,7 +48,7 @@ export class HubTermService {
         console.log('[HubTerm] service created, nodeId:', this.nodeId)
     }
 
-    private loadNodeId () {
+    private loadNodeId (): void {
         try {
             const saved = localStorage.getItem('hubterm_node_id')
             if (saved) {
@@ -68,13 +68,14 @@ export class HubTermService {
     private generateId (): string {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
             const r = Math.random() * 16 | 0
-            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+            return (c === 'x' ? r : r & 0x3 | 0x8).toString(16)
         })
     }
 
-    start () {
+
+    start (): void {
         const cfg = this.config.store.hubterm
-        if (!cfg || !cfg.enabled || !cfg.centerUrl) {
+        if (!cfg?.enabled || !cfg.centerUrl) {
             console.log('[HubTerm] not starting: disabled or no centerUrl')
             return
         }
@@ -84,7 +85,7 @@ export class HubTermService {
         this.connect(cfg.centerUrl)
     }
 
-    stop () {
+    stop (): void {
         console.log('[HubTerm] stopping')
         this.stopping = true
         if (this.reportTimer) {
@@ -103,7 +104,7 @@ export class HubTermService {
         console.log('[HubTerm] stopped')
     }
 
-    attachTab (tab: BaseTerminalTabComponent<any>) {
+    attachTab (tab: BaseTerminalTabComponent<any>): void {
         const existingId = (tab as any).sessionId
         const sessionId = existingId && existingId !== 'unknown' ? existingId : this.generateId()
         this.attachedTabs.set(tab, {
@@ -117,26 +118,24 @@ export class HubTermService {
         console.log('[HubTerm] tab attached, total tabs:', this.attachedTabs.size)
     }
 
-    detachTab (tab: BaseTerminalTabComponent<any>) {
+    detachTab (tab: BaseTerminalTabComponent<any>): void {
         this.attachedTabs.delete(tab)
         this.sendReport()
         console.log('[HubTerm] tab detached, total tabs:', this.attachedTabs.size)
     }
 
-    sendTerminalData (tab: BaseTerminalTabComponent<any>, value: unknown, direction: 'input' | 'output') {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    sendTerminalData (tab: BaseTerminalTabComponent<any>, value: unknown, direction: 'input' | 'output'): void {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) { return }
         const sessionId = this.attachedTabs.get(tab)?.session_id
-        if (!sessionId) return
+        if (!sessionId) { return }
         this.ws.send(JSON.stringify({
             type: 'terminal_data',
             data: { session_id: sessionId, direction, data: this.bytesToBase64(value) },
         }))
     }
 
-    writeToTab (tab: BaseTerminalTabComponent<any>, data: string) {
-        if (tab && (tab as any).write) {
-            (tab as any).write(new TextDecoder().decode(this.base64ToBytes(data)))
-        }
+    writeToTab (tab: BaseTerminalTabComponent<any>, data: string): void {
+        (tab as any).write?.(new TextDecoder().decode(this.base64ToBytes(data)))
     }
 
     private connect (url: string) {
@@ -164,10 +163,10 @@ export class HubTermService {
                     clearInterval(this.reportTimer)
                     this.reportTimer = null
                 }
-                if (!this.stopping) this.scheduleReconnect(url)
+                if (!this.stopping) { this.scheduleReconnect(url) }
             }
 
-            this.ws.onerror = (event) => {
+            this.ws.onerror = (_event) => {
                 console.log('[HubTerm] websocket error')
             }
 
@@ -176,25 +175,33 @@ export class HubTermService {
             }
         } catch (e) {
             console.error('[HubTerm] connection failed:', e)
-            if (!this.stopping) this.scheduleReconnect(url)
+            if (!this.stopping) { this.scheduleReconnect(url) }
         }
     }
 
     private agentUrl (configuredUrl: string): string {
         const url = new URL(configuredUrl)
-        if (['/', '/ws', '/api/ws'].includes(url.pathname)) url.pathname = '/api/ws/agent'
+        if (['/', '/ws', '/api/ws'].includes(url.pathname)) { url.pathname = '/api/ws/agent' }
         url.searchParams.set('node_id', this.nodeId)
         return url.toString()
     }
 
     private bytesToBase64 (value: unknown): string {
-        let bytes: Uint8Array
-        if (typeof value === 'string') bytes = new TextEncoder().encode(value)
-        else if (value instanceof Uint8Array) bytes = value
-        else if (value instanceof ArrayBuffer) bytes = new Uint8Array(value)
-        else bytes = new TextEncoder().encode(String(value))
+        let bytes: Uint8Array = new Uint8Array(0)
+        if (typeof value === 'string') {
+            bytes = new TextEncoder().encode(value)
+        } else if (value instanceof Uint8Array) {
+            bytes = value
+        } else if (value instanceof ArrayBuffer) {
+            bytes = new Uint8Array(value)
+        } else {
+            bytes = new TextEncoder().encode(String(value))
+        }
+
         let binary = ''
-        for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+        }
         return btoa(binary)
     }
 
@@ -202,8 +209,9 @@ export class HubTermService {
         return Uint8Array.from(atob(value), char => char.charCodeAt(0))
     }
 
-    private scheduleReconnect (url: string) {
-        if (this.reconnectTimer) return
+
+    private scheduleReconnect (url: string): void {
+        if (this.reconnectTimer) { return }
         console.log('[HubTerm] scheduling reconnect in', this.reconnectDelay, 'ms')
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null
@@ -212,22 +220,22 @@ export class HubTermService {
         this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000)
     }
 
-    private startReporting () {
-        if (this.reportTimer) clearInterval(this.reportTimer)
+    private startReporting (): void {
+        if (this.reportTimer) { clearInterval(this.reportTimer) }
         const interval = (this.config.store.hubterm.reportInterval || 3) * 1000
         console.log('[HubTerm] starting reporting every', interval, 'ms')
         this.reportTimer = setInterval(() => this.sendReport(), interval)
         this.sendReport()
     }
 
-    private sendReport () {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    private sendReport (): void {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) { return }
 
         const report: NodeReport = {
             node_id: this.nodeId,
             name: this.config.store.hubterm.nodeName || 'Tabby',
             hostname: window.location.hostname || this.config.store.hubterm.nodeName || 'tabby',
-            os: this.hostApp.platform || '',
+            os: this.hostApp.platform,
             os_version: navigator.userAgent || '',
             arch: '',
             sessions: this.collectSessions(),
@@ -245,12 +253,12 @@ export class HubTermService {
 
     private tabForSession (sessionId: string): BaseTerminalTabComponent<any> | null {
         for (const [tab, session] of this.attachedTabs) {
-            if (session.session_id === sessionId) return tab
+            if (session.session_id === sessionId) { return tab }
         }
         return null
     }
 
-    private handleCommand (raw: string) {
+    private handleCommand (raw: string): void {
         try {
             const cmd: CenterCommand = JSON.parse(raw)
             const payload = cmd.data?.payload || cmd.data || {}
@@ -264,7 +272,7 @@ export class HubTermService {
                 case 'write':
                     if (payload.session_id && payload.data) {
                         const tab = this.tabForSession(payload.session_id)
-                        if (tab) this.writeToTab(tab, payload.data)
+                        if (tab) { this.writeToTab(tab, payload.data) }
                     }
                     break
 
@@ -272,7 +280,7 @@ export class HubTermService {
                 case 'kick_session':
                     if (payload.session_id) {
                         const tab = this.tabForSession(payload.session_id)
-                        if (tab) (tab as any).close()
+                        if (tab) { (tab as any).close() }
                     }
                     break
 
@@ -285,11 +293,9 @@ export class HubTermService {
                     break
 
                 case 'update_config':
-                    if (payload) {
-                        console.log('[HubTerm] updating config:', payload)
-                        Object.assign(this.config.store.hubterm, payload)
-                        this.config.save()
-                    }
+                    console.log('[HubTerm] updating config:', payload)
+                    Object.assign(this.config.store.hubterm, payload)
+                    this.config.save()
                     break
 
                 case 'restart':
