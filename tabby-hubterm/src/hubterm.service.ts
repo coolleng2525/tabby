@@ -4,6 +4,7 @@ import { BaseTerminalTabComponent } from 'tabby-terminal'
 
 interface NodeReport {
     node_id: string
+    source: 'tabby'
     name: string
     hostname: string
     os: string
@@ -36,6 +37,7 @@ export class HubTermService {
     private nodeId = ''
     private attachedTabs: Map<BaseTerminalTabComponent<any>, SessionInfo> = new Map()
     private stopping = false
+    private startPromise: Promise<void> | null = null
 
     private get config () { return this.injector.get(ConfigService) }
     private get hostApp () { return this.injector.get(HostAppService) }
@@ -79,10 +81,64 @@ export class HubTermService {
             console.log('[HubTerm] not starting: disabled or no centerUrl')
             return
         }
+        if (this.ws || this.startPromise) { return }
 
         this.stopping = false
-        console.log('[HubTerm] starting, connecting to:', cfg.centerUrl)
-        this.connect(cfg.centerUrl)
+        this.startPromise = this.registerAndConnect(cfg.centerUrl).finally(() => {
+            this.startPromise = null
+        })
+    }
+
+    private async registerAndConnect (url: string): Promise<void> {
+        try {
+            const cfg = this.config.store.hubterm
+            if (!cfg.token) {
+                console.log('[HubTerm] no token configured, registering node')
+                cfg.token = await this.registerNode(url)
+                await this.config.save()
+                console.log('[HubTerm] node registered and token saved')
+            }
+            if (!this.stopping) {
+                console.log('[HubTerm] starting, connecting to:', url)
+                this.connect(url)
+            }
+        } catch (error) {
+            console.error('[HubTerm] registration failed:', error)
+            if (!this.stopping) {
+                setTimeout(() => this.start(), this.reconnectDelay)
+                this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000)
+            }
+        }
+    }
+
+    private async registerNode (configuredUrl: string): Promise<string> {
+        let response = await this.postRegistration(configuredUrl)
+        if (response.status === 401) {
+            // The node ID can outlive a cleared Tabby config. Generate a fresh
+            // identity once so first-run registration remains automatic.
+            this.nodeId = this.generateId()
+            localStorage.setItem('hubterm_node_id', this.nodeId)
+            response = await this.postRegistration(configuredUrl)
+        }
+        if (!response.ok) {
+            throw new Error(`Center registration returned ${response.status}: ${await response.text()}`)
+        }
+        const result = await response.json()
+        if (!result.token) { throw new Error('Center registration did not return a token') }
+        return result.token
+    }
+
+    private postRegistration (configuredUrl: string): Promise<Response> {
+        const url = new URL(configuredUrl)
+        url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'
+        url.pathname = '/api/nodes/report'
+        url.search = ''
+        url.hash = ''
+        return fetch(url.toString(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(this.nodeReport()),
+        })
     }
 
     stop (): void {
@@ -230,9 +286,16 @@ export class HubTermService {
 
     private sendReport (): void {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) { return }
+        this.ws.send(JSON.stringify({
+            type: 'report',
+            data: this.nodeReport(),
+        }))
+    }
 
-        const report: NodeReport = {
+    private nodeReport (): NodeReport {
+        return {
             node_id: this.nodeId,
+            source: 'tabby',
             name: this.config.store.hubterm.nodeName || 'Tabby',
             hostname: window.location.hostname || this.config.store.hubterm.nodeName || 'tabby',
             os: this.hostApp.platform,
@@ -240,11 +303,6 @@ export class HubTermService {
             arch: '',
             sessions: this.collectSessions(),
         }
-
-        this.ws.send(JSON.stringify({
-            type: 'report',
-            data: report,
-        }))
     }
 
     private collectSessions (): SessionInfo[] {
