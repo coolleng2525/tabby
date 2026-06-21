@@ -22,14 +22,17 @@ jobs:
           cache: yarn
 
       - name: Install dependencies
-        run: yarn --ignore-scripts --network-timeout 1000000
+        run: |
+          yarn --ignore-scripts --network-timeout 1000000
+          for PACKAGE in tabby-core tabby-settings tabby-terminal tabby-hubterm; do
+            yarn --cwd "$PACKAGE" install --ignore-scripts --network-timeout 1000000
+          done
 
       - name: Build plugin
         run: |
-          VERSION=$(node -p "require('./tabby-hubterm/package.json').version")
-          git tag -d "$GITHUB_REF_NAME"
-          git tag "v${VERSION}"
-          yarn build:typings
+          for PACKAGE in tabby-core tabby-settings tabby-terminal tabby-hubterm; do
+            yarn tsc --project "$PACKAGE/tsconfig.typings.json"
+          done
           yarn --cwd tabby-hubterm build
 
       - name: Package plugin
