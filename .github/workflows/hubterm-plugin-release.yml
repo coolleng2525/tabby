@@ -28,6 +28,11 @@ jobs:
           git tag -d "$GITHUB_REF_NAME"
           git tag "v${VERSION}"
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig1-dev
+
       - name: Install dependencies
         run: yarn --network-timeout 1000000
 
