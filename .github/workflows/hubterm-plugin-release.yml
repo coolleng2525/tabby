@@ -22,18 +22,13 @@ jobs:
           cache: yarn
 
       - name: Install dependencies
-        run: |
-          yarn --ignore-scripts --network-timeout 1000000
-          for PACKAGE in tabby-core tabby-settings tabby-terminal tabby-hubterm; do
-            yarn --cwd "$PACKAGE" install --ignore-scripts --network-timeout 1000000
-          done
+        run: yarn --ignore-scripts --network-timeout 1000000
 
       - name: Build plugin
         run: |
-          for PACKAGE in tabby-core tabby-settings tabby-terminal tabby-hubterm; do
-            yarn tsc --project "$PACKAGE/tsconfig.typings.json"
-          done
           yarn --cwd tabby-hubterm build
+          mkdir -p tabby-hubterm/typings
+          printf 'declare const HubTermModule: unknown\nexport default HubTermModule\n' > tabby-hubterm/typings/index.d.ts
 
       - name: Package plugin
         shell: bash
