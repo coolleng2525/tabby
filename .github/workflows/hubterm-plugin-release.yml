@@ -21,14 +21,20 @@ jobs:
           node-version: 22
           cache: yarn
 
+      - name: Prepare Tabby-compatible version tag
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./tabby-hubterm/package.json').version")
+          git tag -d "$GITHUB_REF_NAME"
+          git tag "v${VERSION}"
+
       - name: Install dependencies
-        run: yarn --ignore-scripts --network-timeout 1000000
+        run: yarn --network-timeout 1000000
 
       - name: Build plugin
         run: |
+          yarn build:typings
           yarn --cwd tabby-hubterm build
-          mkdir -p tabby-hubterm/typings
-          printf 'declare const HubTermModule: unknown\nexport default HubTermModule\n' > tabby-hubterm/typings/index.d.ts
 
       - name: Package plugin
         shell: bash
