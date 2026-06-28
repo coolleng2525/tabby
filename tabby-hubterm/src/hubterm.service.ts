@@ -173,11 +173,14 @@ export class HubTermService {
     }
 
     attachTab (tab: BaseTerminalTabComponent<any>): void {
-        const existingId = (tab as any).sessionId
-        const sessionId = existingId && existingId !== 'unknown' ? existingId : this.generateId()
+        const tabState = tab as any
+        if (!tabState.hubtermSessionId) {
+            tabState.hubtermSessionId = this.generateId()
+        }
+        const sessionId = tabState.hubtermSessionId
         this.attachedTabs.set(tab, {
             session_id: sessionId,
-            port_name: (tab as any).sessionName || (tab as any).profile?.name || 'terminal',
+            port_name: tabState.sessionName || tabState.profile?.name || 'terminal',
             user: '',
             type: 'master',
             client_ip: '',
