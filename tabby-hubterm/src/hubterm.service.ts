@@ -191,7 +191,13 @@ export class HubTermService {
     }
 
     writeToTab (tab: BaseTerminalTabComponent<any>, data: string): void {
-        (tab as any).write?.(new TextDecoder().decode(this.base64ToBytes(data)))
+        const decoded = new TextDecoder().decode(this.base64ToBytes(data))
+        const terminal = tab as any
+        if (terminal.sendInput) {
+            terminal.sendInput(decoded)
+        } else {
+            terminal.write?.(decoded)
+        }
     }
 
     private connect (url: string) {
