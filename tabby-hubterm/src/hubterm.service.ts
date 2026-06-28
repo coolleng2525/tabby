@@ -1,6 +1,8 @@
 import { Injectable, Injector, NgZone } from '@angular/core'
 import { ConfigService, HostAppService } from 'tabby-core'
 import { BaseTerminalTabComponent } from 'tabby-terminal'
+import * as childProcess from 'child_process'
+import * as os from 'os'
 
 interface NodeReport {
     node_id: string
@@ -10,6 +12,12 @@ interface NodeReport {
     os: string
     os_version: string
     arch: string
+    cpu_percent: number
+    memory_total: number
+    memory_used: number
+    memory_percent: number
+    disk_total: number
+    disk_used: number
     sessions: SessionInfo[]
 }
 
@@ -38,6 +46,7 @@ export class HubTermService {
     private attachedTabs: Map<BaseTerminalTabComponent<any>, SessionInfo> = new Map()
     private stopping = false
     private startPromise: Promise<void> | null = null
+    private lastCpuSample: { idle: number, total: number } | null = null
 
     private get config () { return this.injector.get(ConfigService) }
     private get hostApp () { return this.injector.get(HostAppService) }
@@ -299,20 +308,113 @@ export class HubTermService {
     }
 
     private nodeReport (): NodeReport {
+        const metrics = this.collectSystemMetrics()
         return {
             node_id: this.nodeId,
             source: 'tabby',
             name: this.config.store.hubterm.nodeName || 'Tabby',
-            hostname: window.location.hostname || this.config.store.hubterm.nodeName || 'tabby',
+            hostname: this.hostname(),
             os: this.hostApp.platform,
             os_version: navigator.userAgent || '',
-            arch: '',
+            arch: os.arch?.() || '',
+            ...metrics,
             sessions: this.collectSessions(),
         }
     }
 
     private collectSessions (): SessionInfo[] {
         return Array.from(this.attachedTabs.values())
+    }
+
+    private hostname (): string {
+        return os.hostname?.() || window.location.hostname || this.config.store.hubterm.nodeName || 'tabby'
+    }
+
+    private collectSystemMetrics (): Pick<NodeReport, 'cpu_percent' | 'memory_total' | 'memory_used' | 'memory_percent' | 'disk_total' | 'disk_used'> {
+        const memory = this.collectMemoryMetrics()
+        const disk = this.collectDiskMetrics()
+
+        return {
+            cpu_percent: this.collectCpuPercent(),
+            memory_total: memory.total,
+            memory_used: memory.used,
+            memory_percent: memory.percent,
+            disk_total: disk.total,
+            disk_used: disk.used,
+        }
+    }
+
+    private collectMemoryMetrics (): { total: number, used: number, percent: number } {
+        const systemMemory = (process as any).getSystemMemoryInfo?.()
+        let memoryTotal = os.totalmem?.() || 0
+        let memoryFree = os.freemem?.() || 0
+
+        if ((!memoryTotal || !memoryFree) && systemMemory) {
+            memoryTotal = Number(systemMemory.total || 0) * 1024
+            memoryFree = Number(systemMemory.free || 0) * 1024
+        }
+
+        const memoryUsed = Math.max(memoryTotal - memoryFree, 0)
+
+        return {
+            total: memoryTotal,
+            used: memoryUsed,
+            percent: memoryTotal > 0 ? memoryUsed / memoryTotal * 100 : 0,
+        }
+    }
+
+    private collectCpuPercent (): number {
+        const cpus = os.cpus?.() || []
+        if (!cpus.length) {
+            return (process as any).getCPUUsage?.().percentCPUUsage || 0
+        }
+
+        const sample = cpus.reduce((acc, cpu) => {
+            const times = cpu.times
+            const total = times.user + times.nice + times.sys + times.irq + times.idle
+            return {
+                idle: acc.idle + times.idle,
+                total: acc.total + total,
+            }
+        }, { idle: 0, total: 0 })
+
+        if (!this.lastCpuSample) {
+            this.lastCpuSample = sample
+            return 0
+        }
+
+        const idleDelta = sample.idle - this.lastCpuSample.idle
+        const totalDelta = sample.total - this.lastCpuSample.total
+        this.lastCpuSample = sample
+
+        if (totalDelta <= 0) { return 0 }
+        return Math.max(0, Math.min(100, (1 - idleDelta / totalDelta) * 100))
+    }
+
+    private collectDiskMetrics (): { total: number, used: number } {
+        try {
+            if (![os.platform?.(), process.platform, this.hostApp.platform].some(platform => ['darwin', 'linux', 'macOS', 'Linux'].includes(platform))) {
+                return { total: 0, used: 0 }
+            }
+            const output = childProcess.execFileSync('/bin/df', ['-Pk', '/'], { encoding: 'utf8', timeout: 2000 })
+            const line = output.trim().split('\n')[1]
+            if (!line) { return { total: 0, used: 0 } }
+
+            const columns = line.trim().split(/\s+/)
+            const totalKb = Number(columns[1])
+            const usedKb = Number(columns[2])
+            if (!Number.isFinite(totalKb) || !Number.isFinite(usedKb)) {
+                return { total: 0, used: 0 }
+            }
+
+            return {
+                total: totalKb * 1024,
+                used: usedKb * 1024,
+            }
+        } catch (error) {
+            console.log('[HubTerm] failed to collect disk metrics:', error)
+            return { total: 0, used: 0 }
+        }
     }
 
     private tabForSession (sessionId: string): BaseTerminalTabComponent<any> | null {
